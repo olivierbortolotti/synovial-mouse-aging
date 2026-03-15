@@ -1,0 +1,86 @@
+---
+title: "Merge all dataset"
+author: "Olivier BORTOLOTTI"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(clustree)
+library(celldex)
+library(SingleR)
+library(SingleCellExperiment)
+options(future.globals.maxSize = 4000 * 1024^2)
+```
+
+## Merge data
+
+
+```{r warning=FALSE, include=FALSE}
+sc1<- readRDS("~/young-oldv2/results/young/sc_postqc.rds")
+sc1@meta.data$condition<-"young"
+
+sc2<- readRDS("~/young-oldv2/results/old/sc_postqc.rds")
+sc2@meta.data$condition<-"old"
+
+
+sc.merged <- merge(sc1, y = c(sc2), add.cell.ids = c("young", "old"), project = "scmerged")
+
+sc<- sc.merged
+
+convertHumanGeneList <- function(x){
+  require("biomaRt")
+  ensembl_version="https://may2015.archive.ensembl.org"
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl", host=ensembl_version)
+mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl", host=ensembl_version)
+  genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x , mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T)
+  humanx <- unique(genesV2[, 2])
+  return(humanx)
+}
+
+s.genes <- convertHumanGeneList(cc.genes.updated.2019$s.genes)
+g2m.genes <- convertHumanGeneList(cc.genes.updated.2019$g2m.genes)
+sc <- FindVariableFeatures(sc, nfeatures = 3000)
+sc<- CellCycleScoring(sc, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+```
+
+
+```{r warning=FALSE, include=FALSE}
+sc <- SCTransform(sc, vars.to.regress = c("percent.mt", "S.Score", "G2M.Score"), verbose = FALSE)
+sc <- RunPCA(sc, verbose = FALSE)
+sc <- RunUMAP(sc, dims = 1:30, verbose = FALSE)
+```
+
+## After cell cycle regression
+
+
+```{r echo=FALSE}
+ElbowPlot(sc)
+VizDimLoadings(sc, dims = 1:2, reduction = "pca")
+VizDimLoadings(sc, dims = 3:4, reduction = "pca")
+VizDimLoadings(sc, dims = 5:6, reduction = "pca")
+DimPlot(sc)
+DimPlot(sc, split.by="condition")
+```
+```{r include=FALSE}
+sc <- FindNeighbors(sc, dims = 1:30, verbose = FALSE)
+sc <- FindClusters(object = sc, resolution = seq(0,0.7,0.05))
+```
+
+## Clustree 0.05 step
+
+```{r echo=FALSE, warning=FALSE}
+clustree(sc, node_colour = "sc3_stability")
+```
+
+
+
+```{r, echo=FALSE}
+saveRDS(sc,file = paste("~/young-oldv2/results/merge/sc_postsctransform_ccr.rds", sep = "/"))
+```
+
+
+

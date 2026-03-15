@@ -1,0 +1,119 @@
+---
+title: "Quality Control"
+author: "Olivier BORTOLOTTI"
+output: pdf_document
+params: 
+  dataset : "young"
+  nfrna_min : 200
+  nfrna_max : 6000
+  pmt_max : 8
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(knitr)
+```
+
+## Quality control
+
+This document is a quality control of the data.
+
+The dataset used is : **
+```{r echo=FALSE, results='asis'}
+cat(params$dataset)
+```
+**
+
+
+```{r echo=FALSE}
+sc.data <- Read10X(data.dir = paste("~/young-oldv2/data",params$dataset, sep = "/"))
+sc <- CreateSeuratObject(counts = sc.data, min.cells = 3, min.features = 200, project = paste(params$dataset))
+```
+
+This dataset contains:
+
+- **
+```{r echo=FALSE, results='asis'}
+cat(dim(sc)[2])
+```
+** cells with at least 200 unique gene detected
+
+- **
+```{r echo=FALSE, results='asis'}
+cat(dim(sc)[1])
+```
+** genes detected across cells
+
+```{r echo=FALSE}
+sc[["percent.mt"]] <- PercentageFeatureSet(sc, pattern = "^mt-")
+```
+
+```{r echo=FALSE}
+VlnPlot(sc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+```{r echo=FALSE}
+FeatureScatter(sc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(sc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+```{r echo=FALSE}
+sc <- subset(sc, subset = nFeature_RNA > params$nfrna_min & nFeature_RNA < params$nfrna_max & percent.mt < params$pmt_max)
+
+```
+
+- We filter cells that have unique feature counts over 
+```{r echo=FALSE, results='asis'}
+cat(params$nfrna_max)
+```
+or less than 
+```{r echo=FALSE, results='asis'}
+cat(params$nfrna_min)
+```
+
+
+- We filter cells that have >
+```{r echo=FALSE, results='asis'}
+cat(params$pmt_max)
+```
+mitochondrial counts
+
+**
+```{r echo=FALSE, results='asis'}
+cat(dim(sc)[2])
+```
+** cells remains after filtering
+
+
+```{r echo=FALSE}
+VlnPlot(sc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+
+```{r echo=FALSE}
+FeatureScatter(sc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(sc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+```{r, echo=FALSE}
+saveRDS(sc,file = paste("~/young-oldv2/results",params$dataset,"sc_postqc.rds", sep = "/"))
+```
+
+## Highly variable features
+```{r echo=FALSE, warning=FALSE}
+sc <- NormalizeData(sc, normalization.method = "LogNormalize", scale.factor = 10000)
+sc <- FindVariableFeatures(sc, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top20 <- head(VariableFeatures(sc), 20)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(sc)
+LabelPoints(plot = plot1, points = top20, repel = TRUE)
+kable(head(VariableFeatures(sc), 100), row.names = TRUE)
+```
+
